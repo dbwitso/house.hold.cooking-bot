@@ -21,13 +21,23 @@ function startScheduler() {
     } catch (err) { console.error('Morning cron error:', err); }
   }, { timezone: 'Africa/Lusaka' });
 
-  // Evening reminder 20:00 CAT
-  cron.schedule('0 20 * * *', async () => {
+  // Afternoon reminder 14:00 CAT
+  cron.schedule('0 14 * * *', async () => {
     try {
       const rotation = await getTodayRotation();
       if (!rotation || rotation.status === 'dishes_done') return;
       const cookName = rotation.covered_by_name || rotation.cook_name;
-      await broadcast(templates.eveningReminder(cookName));
+      await broadcast(`⏰ *Reminder:* ${cookName}, don't forget to cook today!`);
+    } catch (err) { console.error('Afternoon reminder error:', err); }
+  }, { timezone: 'Africa/Lusaka' });
+
+  // Evening reminder 18:00 CAT
+  cron.schedule('0 18 * * *', async () => {
+    try {
+      const rotation = await getTodayRotation();
+      if (!rotation || rotation.status === 'dishes_done') return;
+      const cookName = rotation.covered_by_name || rotation.cook_name;
+      await broadcast(`🔔 *Final reminder:* ${cookName}, time to start cooking!`);
     } catch (err) { console.error('Evening cron error:', err); }
   }, { timezone: 'Africa/Lusaka' });
 

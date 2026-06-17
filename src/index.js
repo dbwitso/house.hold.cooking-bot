@@ -69,6 +69,37 @@ app.post('/trigger/morning', async (req, res) => {
 async function boot() {
   await db.getDb();
   console.log('🗄️  Database ready');
+
+  // Assign today's cook and send welcome message
+  try {
+    const rotation = await assignToday();
+    const members = getAllMembers();
+    const welcomeMsg = `👋 *Cooking Bot Online!*
+
+🍳 Today's cook: ${rotation.cook_name} (House ${rotation.cook_house})
+
+📋 *Available commands:*
+• done cooking
+• done dishes
+• schedule
+• sub needed
+• cover
+• swap @name
+• help
+
+🕐 *You'll get reminders at:*
+• 10:00 AM - Morning announcement
+• 2:00 PM - Afternoon reminder
+• 6:00 PM - Evening reminder`;
+
+    for (const member of members) {
+      await sendToMember(member, welcomeMsg);
+    }
+    console.log(`📬 Welcome messages sent to ${members.length} members`);
+  } catch (err) {
+    console.error('Boot message error:', err);
+  }
+
   startScheduler();
   app.listen(PORT, () => {
     console.log(`🚀 Cooking bot on port ${PORT}`);
