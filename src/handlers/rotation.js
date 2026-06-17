@@ -22,8 +22,18 @@ async function assignToday() {
   const existing = await getTodayRotation();
   if (existing) return existing;
 
-  const next = db.get('SELECT * FROM members WHERE active=1 ORDER BY queue_position ASC LIMIT 1');
-  if (!next) throw new Error('No active members');
+  // Find next member who hasn't cooked yet or needs to be rotated
+  const next = db.get(`
+    SELECT m.* FROM members m
+    WHERE m.active=1
+    AND m.id NOT IN (
+      SELECT member_id FROM rotation
+      WHERE scheduled_date = ? AND status NOT IN ('pending')
+    )
+    ORDER BY m.queue_position ASC LIMIT 1
+  `, [today]);
+
+  if (!next) throw new Error('No active members available');
 
   db.run('INSERT INTO rotation (member_id, scheduled_date, status) VALUES (?,?,?)', [next.id, today, 'pending']);
   rotateToBack(next.id);

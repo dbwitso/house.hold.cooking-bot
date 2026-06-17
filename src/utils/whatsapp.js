@@ -1,7 +1,7 @@
 const axios = require('axios');
 require('dotenv').config();
 
-const BASE_URL = `https://graph.facebook.com/v18.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`;
+const BASE_URL = `https://graph.facebook.com/v20.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`;
 
 const headers = () => ({
   Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}`,
@@ -13,18 +13,29 @@ const headers = () => ({
  */
 async function sendMessage(to, text) {
   try {
-    await axios.post(BASE_URL, {
+    if (!to) {
+      console.error('❌ sendMessage: No recipient (to) provided');
+      return;
+    }
+    if (!process.env.WHATSAPP_TOKEN) {
+      console.error('❌ sendMessage: WHATSAPP_TOKEN not set');
+      return;
+    }
+
+    const payload = {
       messaging_product: 'whatsapp',
-      to,
+      to: String(to).trim(),
       type: 'text',
       text: { body: text },
-    }, { headers: headers() });
+    };
+
+    const response = await axios.post(BASE_URL, payload, { headers: headers() });
+    console.log(`✅ Message sent to ${to}`);
   } catch (err) {
     const errData = err.response?.data?.error;
+    console.error(`❌ [${errData?.code || 'ERROR'}] Message to ${to} failed:`, errData?.message || err.message);
     if (errData?.code === 100) {
-      console.warn(`⚠️  Message to ${to} failed: Phone number may not be configured or app not published. Code: ${errData.code}`);
-    } else {
-      console.error('WhatsApp send error:', errData?.message || err.message);
+      console.error('   → Check: Token valid? Phone number format correct? Business account linked?');
     }
   }
 }
