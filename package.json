@@ -1,0 +1,20 @@
+{
+  "name": "household-cooking-bot",
+  "version": "1.0.0",
+  "description": "WhatsApp cooking schedule bot for two households",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js"
+  },
+  "dependencies": {
+    "axios": "^1.6.7",
+    "dotenv": "^16.4.1",
+    "express": "^4.18.2",
+    "node-cron": "^3.0.3",
+    "sql.js": "^1.14.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.3"
+  }
+}
