@@ -1,0 +1,19 @@
+app = "household-cooking-bot"
+primary_region = "jnb"  # Johannesburg (closest to Zambia)
+
+[build]
+  builder = "heroku"
+
+[env]
+  PORT = "3000"
+  TZ = "Africa/Lusaka"
+
+[[services]]
+  internal_port = 3000
+  processes = ["app"]
+
+  [services.tcp_checks]
+    enabled = true
+    grace_period = "1s"
+    interval = 10000
+    timeout = 2000
