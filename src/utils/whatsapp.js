@@ -20,7 +20,12 @@ async function sendMessage(to, text) {
       text: { body: text },
     }, { headers: headers() });
   } catch (err) {
-    console.error('WhatsApp send error:', err.response?.data || err.message);
+    const errData = err.response?.data?.error;
+    if (errData?.code === 100) {
+      console.warn(`⚠️  Message to ${to} failed: Phone number may not be configured or app not published. Code: ${errData.code}`);
+    } else {
+      console.error('WhatsApp send error:', errData?.message || err.message);
+    }
   }
 }
 

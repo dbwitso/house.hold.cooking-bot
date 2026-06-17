@@ -42,6 +42,17 @@ app.post('/webhook', async (req, res) => {
   } catch (err) { console.error('Webhook error:', err); }
 });
 
+// Diagnostics
+app.get('/config', (req, res) => {
+  res.json({
+    phone_number_id: process.env.WHATSAPP_PHONE_NUMBER_ID,
+    has_token: !!process.env.WHATSAPP_TOKEN,
+    token_length: process.env.WHATSAPP_TOKEN?.length || 0,
+    webhook_configured: !!VERIFY_TOKEN,
+    note: 'If phone_number_id shows but messages fail (code 100), the number may need to be configured in Meta Dashboard or app needs to be published'
+  });
+});
+
 // Health check
 app.get('/health', async (req, res) => {
   try {
@@ -70,34 +81,11 @@ async function boot() {
   await db.getDb();
   console.log('🗄️  Database ready');
 
-  // Assign today's cook and send welcome message
   try {
     const rotation = await assignToday();
-    const members = await getAllMembers();
-    const welcomeMsg = `👋 *Cooking Bot Online!*
-
-🍳 Today's cook: ${rotation.cook_name} (House ${rotation.cook_house})
-
-📋 *Available commands:*
-• done cooking
-• done dishes
-• schedule
-• sub needed
-• cover
-• swap @name
-• help
-
-🕐 *You'll get reminders at:*
-• 10:00 AM - Morning announcement
-• 2:00 PM - Afternoon reminder
-• 6:00 PM - Evening reminder`;
-
-    for (const member of members) {
-      await sendToMember(member, welcomeMsg);
-    }
-    console.log(`📬 Welcome messages sent to ${members.length} members`);
+    console.log(`🍳 Today's cook: ${rotation.cook_name} (House ${rotation.cook_house})`);
   } catch (err) {
-    console.error('Boot message error:', err);
+    console.error('Failed to assign today:', err.message);
   }
 
   startScheduler();
