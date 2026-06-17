@@ -57,7 +57,7 @@ app.post('/trigger/morning', async (req, res) => {
   try {
     const rotation = await assignToday();
     const msg = templates.morningAnnouncement(rotation.cook_name, rotation.cook_house);
-    const members = getAllMembers();
+    const members = await getAllMembers();
     for (const member of members) {
       await sendToMember(member, msg);
     }
@@ -73,7 +73,7 @@ async function boot() {
   // Assign today's cook and send welcome message
   try {
     const rotation = await assignToday();
-    const members = getAllMembers();
+    const members = await getAllMembers();
     const welcomeMsg = `👋 *Cooking Bot Online!*
 
 🍳 Today's cook: ${rotation.cook_name} (House ${rotation.cook_house})

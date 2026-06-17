@@ -6,7 +6,7 @@ const templates = require('../utils/templates');
 const db = require('../db/database');
 
 async function broadcast(text) {
-  const members = getAllMembers();
+  const members = await getAllMembers();
   for (const member of members) {
     await sendToMember(member, text);
   }

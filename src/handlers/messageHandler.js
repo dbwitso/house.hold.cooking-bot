@@ -6,7 +6,7 @@ const templates = require('../utils/templates');
 async function send(to, text) { await waSend(to, text); }
 
 async function broadcast(text) {
-  const members = rotation.getAllMembers();
+  const members = await rotation.getAllMembers();
   for (const member of members) {
     await sendToMember(member, text);
   }
