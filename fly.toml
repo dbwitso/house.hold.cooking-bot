@@ -12,6 +12,15 @@ primary_region = "jnb"  # Johannesburg (closest to Zambia)
   internal_port = 3000
   processes = ["app"]
 
+  [[services.ports]]
+    port = 80
+    handlers = ["http"]
+    force_https = true
+
+  [[services.ports]]
+    port = 443
+    handlers = ["tls", "http"]
+
   [services.tcp_checks]
     enabled = true
     grace_period = "1s"
