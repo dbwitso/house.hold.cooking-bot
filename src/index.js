@@ -3,7 +3,7 @@ const express = require('express');
 const { startScheduler } = require('./scheduler/crons');
 const { handleMessage } = require('./handlers/messageHandler');
 const { assignToday, getAllMembers, getTodayRotation } = require('./handlers/rotation');
-const { sendGroupMessage } = require('./utils/whatsapp');
+const { sendToMember } = require('./utils/whatsapp');
 const templates = require('./utils/templates');
 const db = require('./db/database');
 
@@ -12,7 +12,6 @@ app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
 const VERIFY_TOKEN = process.env.VERIFY_TOKEN || 'cooking-bot-verify';
-const GROUP_CHAT_ID = process.env.GROUP_CHAT_ID;
 
 // Webhook verification
 app.get('/webhook', (req, res) => {
@@ -35,9 +34,8 @@ app.post('/webhook', async (req, res) => {
           if (message.type !== 'text') continue;
           const from = message.from;
           const text = message.text.body;
-          const isGroup = from === GROUP_CHAT_ID;
-          console.log(`📨 [${isGroup ? 'GROUP' : 'DM'}] ${from}: ${text}`);
-          await handleMessage(from, text, isGroup);
+          console.log(`📨 ${from}: ${text}`);
+          await handleMessage(from, text);
         }
       }
     }
@@ -59,8 +57,11 @@ app.post('/trigger/morning', async (req, res) => {
   try {
     const rotation = await assignToday();
     const msg = templates.morningAnnouncement(rotation.cook_name, rotation.cook_house);
-    await sendGroupMessage(msg);
-    res.json({ success: true, cook: rotation.cook_name, message: msg });
+    const members = getAllMembers();
+    for (const member of members) {
+      await sendToMember(member, msg);
+    }
+    res.json({ success: true, cook: rotation.cook_name, sentTo: members.length });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

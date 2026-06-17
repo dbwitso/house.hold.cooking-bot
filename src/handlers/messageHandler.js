@@ -1,11 +1,18 @@
 const rotation = require('./rotation');
 const disputes = require('./disputes');
-const { sendMessage: waSend, sendGroupMessage } = require('../utils/whatsapp');
+const { sendMessage: waSend, sendToMember } = require('../utils/whatsapp');
 const templates = require('../utils/templates');
 
 async function send(to, text) { await waSend(to, text); }
 
-async function handleMessage(from, text, isGroup) {
+async function broadcast(text) {
+  const members = rotation.getAllMembers();
+  for (const member of members) {
+    await sendToMember(member, text);
+  }
+}
+
+async function handleMessage(from, text) {
   const raw = text.trim().toLowerCase();
 
   // Register (works before phone is linked)
@@ -36,7 +43,7 @@ async function handleMessage(from, text, isGroup) {
     const r = await rotation.confirmCookingDone(member.id);
     if (r.error) { await send(from, `❌ ${r.error}`); return; }
     const rot = await rotation.getTodayRotation();
-    await sendGroupMessage(templates.cookingConfirmed(rot.covered_by_name || rot.cook_name));
+    await broadcast(templates.cookingConfirmed(rot.covered_by_name || rot.cook_name));
     return;
   }
 
@@ -44,21 +51,21 @@ async function handleMessage(from, text, isGroup) {
     const r = await rotation.confirmDishesDone(member.id);
     if (r.error) { await send(from, `❌ ${r.error}`); return; }
     const rot = await rotation.getTodayRotation();
-    await sendGroupMessage(templates.dishesConfirmed(rot.covered_by_name || rot.cook_name));
+    await broadcast(templates.dishesConfirmed(rot.covered_by_name || rot.cook_name));
     return;
   }
 
   if (raw === 'skip') {
     const r = await rotation.skipToday(member.id);
     if (r.error) { await send(from, `❌ ${r.error}`); return; }
-    await sendGroupMessage(`⏭️ *${member.name}* skipped tonight and moves to front of tomorrow's queue.`);
+    await broadcast(`⏭️ *${member.name}* skipped tonight and moves to front of tomorrow's queue.`);
     return;
   }
 
   if (raw === 'sub needed') {
     const r = await rotation.requestSub(member.id);
     if (r.error) { await send(from, `❌ ${r.error}`); return; }
-    await sendGroupMessage(templates.subRequest(member.name));
+    await broadcast(templates.subRequest(member.name));
     return;
   }
 
@@ -66,7 +73,7 @@ async function handleMessage(from, text, isGroup) {
     const r = await rotation.coverSub(member.id);
     if (r.error) { await send(from, `❌ ${r.error}`); return; }
     const rot = await rotation.getTodayRotation();
-    await sendGroupMessage(templates.subFilled(member.name, rot.cook_name));
+    await broadcast(templates.subFilled(member.name, rot.cook_name));
     return;
   }
 
@@ -75,21 +82,21 @@ async function handleMessage(from, text, isGroup) {
     const r = await rotation.requestSwap(member.id, swapReqMatch[1]);
     if (r.error) { await send(from, `❌ ${r.error}`); return; }
     const rot = await rotation.getTodayRotation();
-    await sendGroupMessage(templates.swapRequest(member.name, r.targetName, rot?.scheduled_date));
+    await broadcast(templates.swapRequest(member.name, r.targetName, rot?.scheduled_date));
     return;
   }
 
   if (raw === 'swap yes') {
     const r = await rotation.acceptSwap(member.id);
     if (r.error) { await send(from, `❌ ${r.error}`); return; }
-    await sendGroupMessage(templates.swapAccepted(member.name, ''));
+    await broadcast(templates.swapAccepted(member.name, ''));
     return;
   }
 
   if (raw === 'swap no') {
     const r = await rotation.declineSwap(member.id);
     if (r.error) { await send(from, `❌ ${r.error}`); return; }
-    await sendGroupMessage(`❌ *Swap declined* by ${member.name}.`);
+    await broadcast(`❌ *Swap declined* by ${member.name}.`);
     return;
   }
 
@@ -98,7 +105,7 @@ async function handleMessage(from, text, isGroup) {
     const r = await disputes.raiseDispute(member.id, stage);
     if (r.error) { await send(from, `❌ ${r.error}`); return; }
     const rot = await rotation.getTodayRotation();
-    await sendGroupMessage(templates.disputeRaised(member.name, stage, rot.covered_by_name || rot.cook_name));
+    await broadcast(templates.disputeRaised(member.name, stage, rot.covered_by_name || rot.cook_name));
     return;
   }
 
@@ -109,7 +116,7 @@ async function handleMessage(from, text, isGroup) {
     if (r.error) { await send(from, `❌ ${r.error}`); return; }
     if (r.resolved) {
       const rot = await rotation.getTodayRotation();
-      await sendGroupMessage(templates.disputeResult(r.outcome, rot.covered_by_name || rot.cook_name, openDispute.stage));
+      await broadcast(templates.disputeResult(r.outcome, rot.covered_by_name || rot.cook_name, openDispute.stage));
     } else {
       await send(from, `✅ Vote recorded. ${r.votesIn} votes so far, need ${r.needed}.`);
     }
