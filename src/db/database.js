@@ -1,117 +1,91 @@
-const initSqlJs = require('sql.js');
-const path = require('path');
-const fs = require('fs');
+const { Pool } = require('pg');
 
-const DB_PATH = path.join(__dirname, '../../data/cooking.db');
-let db = null;
-let SQL = null;
+let pool = null;
+let lastInsertId = null;
 
 async function getDb() {
-  if (db) return db;
-  SQL = await initSqlJs();
-  if (fs.existsSync(DB_PATH)) {
-    const buf = fs.readFileSync(DB_PATH);
-    db = new SQL.Database(buf);
-  } else {
-    db = new SQL.Database();
+  if (pool) return pool;
+
+  pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+  });
+
+  pool.on('error', (err) => {
+    console.error('Pool error:', err);
+  });
+
+  await initSchema();
+  return pool;
+}
+
+async function initSchema() {
+  const client = await pool.connect();
+  try {
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS members (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE,
+        telegram_id BIGINT UNIQUE,
+        house INTEGER NOT NULL,
+        queue_position INTEGER NOT NULL,
+        owed_turns INTEGER DEFAULT 0,
+        active INTEGER DEFAULT 1
+      );
+      CREATE TABLE IF NOT EXISTS rotation (
+        id SERIAL PRIMARY KEY,
+        member_id INTEGER NOT NULL REFERENCES members(id),
+        scheduled_date TEXT,
+        status TEXT DEFAULT 'pending',
+        covered_by INTEGER REFERENCES members(id),
+        swapped_with INTEGER REFERENCES members(id),
+        created_at TEXT DEFAULT (now()::text)
+      );
+      CREATE TABLE IF NOT EXISTS disputes (
+        id SERIAL PRIMARY KEY,
+        rotation_id INTEGER NOT NULL REFERENCES rotation(id),
+        raised_by INTEGER NOT NULL REFERENCES members(id),
+        stage TEXT NOT NULL,
+        status TEXT DEFAULT 'open',
+        expires_at TEXT NOT NULL,
+        created_at TEXT DEFAULT (now()::text)
+      );
+      CREATE TABLE IF NOT EXISTS dispute_votes (
+        id SERIAL PRIMARY KEY,
+        dispute_id INTEGER NOT NULL REFERENCES disputes(id),
+        member_id INTEGER NOT NULL REFERENCES members(id),
+        vote INTEGER NOT NULL,
+        UNIQUE(dispute_id, member_id)
+      );
+      CREATE TABLE IF NOT EXISTS sub_requests (
+        id SERIAL PRIMARY KEY,
+        rotation_id INTEGER NOT NULL REFERENCES rotation(id),
+        requester_id INTEGER NOT NULL REFERENCES members(id),
+        volunteer_id INTEGER REFERENCES members(id),
+        status TEXT DEFAULT 'open',
+        expires_at TEXT NOT NULL,
+        created_at TEXT DEFAULT (now()::text)
+      );
+      CREATE TABLE IF NOT EXISTS swap_requests (
+        id SERIAL PRIMARY KEY,
+        requester_rotation_id INTEGER NOT NULL REFERENCES rotation(id),
+        target_member_id INTEGER NOT NULL REFERENCES members(id),
+        status TEXT DEFAULT 'pending',
+        expires_at TEXT NOT NULL,
+        created_at TEXT DEFAULT (now()::text)
+      );
+    `);
+
+    const count = await client.query('SELECT COUNT(*) as c FROM members');
+    if (count.rows[0].c === 0) {
+      await seedMembers(client);
+    }
+  } finally {
+    client.release();
   }
-  initSchema();
-  return db;
 }
 
-function persist() {
-  const data = db.export();
-  fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
-  fs.writeFileSync(DB_PATH, Buffer.from(data));
-}
-
-function run(sql, params = []) {
-  db.run(sql, params);
-  persist();
-}
-
-function get(sql, params = []) {
-  const stmt = db.prepare(sql);
-  stmt.bind(params);
-  if (stmt.step()) {
-    const row = stmt.getAsObject();
-    stmt.free();
-    return row;
-  }
-  stmt.free();
-  return null;
-}
-
-function all(sql, params = []) {
-  const rows = [];
-  const stmt = db.prepare(sql);
-  stmt.bind(params);
-  while (stmt.step()) rows.push(stmt.getAsObject());
-  stmt.free();
-  return rows;
-}
-
-function initSchema() {
-  db.run(`
-    CREATE TABLE IF NOT EXISTS members (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL UNIQUE,
-      phone TEXT UNIQUE,
-      house INTEGER NOT NULL,
-      queue_position INTEGER NOT NULL,
-      owed_turns INTEGER DEFAULT 0,
-      active INTEGER DEFAULT 1
-    );
-    CREATE TABLE IF NOT EXISTS rotation (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      member_id INTEGER NOT NULL,
-      scheduled_date TEXT,
-      status TEXT DEFAULT 'pending',
-      covered_by INTEGER,
-      swapped_with INTEGER,
-      created_at TEXT DEFAULT (datetime('now'))
-    );
-    CREATE TABLE IF NOT EXISTS disputes (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      rotation_id INTEGER NOT NULL,
-      raised_by INTEGER NOT NULL,
-      stage TEXT NOT NULL,
-      status TEXT DEFAULT 'open',
-      expires_at TEXT NOT NULL,
-      created_at TEXT DEFAULT (datetime('now'))
-    );
-    CREATE TABLE IF NOT EXISTS dispute_votes (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      dispute_id INTEGER NOT NULL,
-      member_id INTEGER NOT NULL,
-      vote INTEGER NOT NULL,
-      UNIQUE(dispute_id, member_id)
-    );
-    CREATE TABLE IF NOT EXISTS sub_requests (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      rotation_id INTEGER NOT NULL,
-      requester_id INTEGER NOT NULL,
-      volunteer_id INTEGER,
-      status TEXT DEFAULT 'open',
-      expires_at TEXT NOT NULL,
-      created_at TEXT DEFAULT (datetime('now'))
-    );
-    CREATE TABLE IF NOT EXISTS swap_requests (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      requester_rotation_id INTEGER NOT NULL,
-      target_member_id INTEGER NOT NULL,
-      status TEXT DEFAULT 'pending',
-      expires_at TEXT NOT NULL,
-      created_at TEXT DEFAULT (datetime('now'))
-    );
-  `);
-  persist();
-
-  const count = get('SELECT COUNT(*) as c FROM members');
-  if (!count || count.c === 0) seedMembers();
-}
-
-function seedMembers() {
+async function seedMembers(client) {
   const members = [
     { name: 'Dabwitso', house: 1, pos: 1 },
     { name: 'Emmanuel', house: 1, pos: 2 },
@@ -120,15 +94,55 @@ function seedMembers() {
     { name: 'Bosco', house: 2, pos: 5 },
     { name: 'Chibili', house: 2, pos: 6 },
   ];
+
   for (const m of members) {
-    run('INSERT INTO members (name, house, queue_position) VALUES (?,?,?)', [m.name, m.house, m.pos]);
+    await client.query(
+      'INSERT INTO members (name, house, queue_position) VALUES ($1, $2, $3)',
+      [m.name, m.house, m.pos]
+    );
   }
   console.log('✅ Members seeded');
 }
 
-// Last inserted rowid helper
+async function run(sql, params = []) {
+  const client = await pool.connect();
+  try {
+    const result = await client.query(sql, params);
+    if (result.rows.length > 0 && result.rows[0].lastval) {
+      lastInsertId = result.rows[0].lastval;
+    }
+    return result;
+  } finally {
+    client.release();
+  }
+}
+
+async function get(sql, params = []) {
+  const client = await pool.connect();
+  try {
+    const result = await client.query(sql, params);
+    return result.rows[0] || null;
+  } finally {
+    client.release();
+  }
+}
+
+async function all(sql, params = []) {
+  const client = await pool.connect();
+  try {
+    const result = await client.query(sql, params);
+    return result.rows;
+  } finally {
+    client.release();
+  }
+}
+
 function lastId() {
-  return get('SELECT last_insert_rowid() as id').id;
+  return lastInsertId;
+}
+
+function persist() {
+  // PostgreSQL persists automatically, no action needed
 }
 
 module.exports = { getDb, run, get, all, lastId, persist };

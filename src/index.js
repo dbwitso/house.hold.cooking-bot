@@ -1,9 +1,10 @@
 require('dotenv').config();
 const express = require('express');
+const axios = require('axios');
 const { startScheduler } = require('./scheduler/crons');
 const { handleMessage } = require('./handlers/messageHandler');
 const { assignToday, getAllMembers, getTodayRotation } = require('./handlers/rotation');
-const { sendToMember } = require('./utils/whatsapp');
+const { sendToMember } = require('./utils/telegram');
 const templates = require('./utils/templates');
 const db = require('./db/database');
 
@@ -11,45 +12,61 @@ const app = express();
 app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
-const VERIFY_TOKEN = process.env.VERIFY_TOKEN || 'cooking-bot-verify';
+const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+let lastUpdateId = 0;
 
-// Webhook verification
-app.get('/webhook', (req, res) => {
-  const { 'hub.mode': mode, 'hub.verify_token': token, 'hub.challenge': challenge } = req.query;
-  if (mode === 'subscribe' && token === VERIFY_TOKEN) { res.status(200).send(challenge); }
-  else res.sendStatus(403);
-});
+// Polling for messages
+async function pollUpdates() {
+  try {
+    const response = await axios.get(`https://api.telegram.org/bot${BOT_TOKEN}/getUpdates`, {
+      params: { offset: lastUpdateId + 1, timeout: 30 }
+    });
 
-// Incoming messages
+    if (!response.data.ok) return;
+
+    for (const update of response.data.result) {
+      lastUpdateId = update.update_id;
+      const message = update.message;
+
+      if (!message || !message.text) continue;
+
+      const userId = message.from.id;
+      const chatId = message.chat.id;
+      const text = message.text;
+      const name = message.from.first_name || 'User';
+      console.log(`📨 ${name} (${userId}): ${text}`);
+      await handleMessage(userId, text, chatId);
+    }
+  } catch (err) {
+    console.error('Polling error:', err.message);
+  }
+
+  setTimeout(pollUpdates, 1000);
+}
+
+// Webhook endpoint (optional, for production)
 app.post('/webhook', async (req, res) => {
   res.sendStatus(200);
   try {
-    const body = req.body;
-    if (body.object !== 'whatsapp_business_account') return;
-    for (const entry of body.entry || []) {
-      for (const change of entry.changes || []) {
-        const value = change.value;
-        if (!value.messages) continue;
-        for (const message of value.messages) {
-          if (message.type !== 'text') continue;
-          const from = message.from;
-          const text = message.text.body;
-          console.log(`📨 ${from}: ${text}`);
-          await handleMessage(from, text);
-        }
-      }
-    }
+    const update = req.body;
+    const message = update.message;
+
+    if (!message || !message.text) return;
+
+    const userId = message.from.id;
+    const text = message.text;
+    console.log(`📨 ${message.from.first_name} (${userId}): ${text}`);
+    await handleMessage(userId, text);
   } catch (err) { console.error('Webhook error:', err); }
 });
 
 // Diagnostics
 app.get('/config', (req, res) => {
   res.json({
-    phone_number_id: process.env.WHATSAPP_PHONE_NUMBER_ID,
-    has_token: !!process.env.WHATSAPP_TOKEN,
-    token_length: process.env.WHATSAPP_TOKEN?.length || 0,
-    webhook_configured: !!VERIFY_TOKEN,
-    note: 'If phone_number_id shows but messages fail (code 100), the number may need to be configured in Meta Dashboard or app needs to be published'
+    has_token: !!process.env.TELEGRAM_BOT_TOKEN,
+    token_length: process.env.TELEGRAM_BOT_TOKEN?.length || 0,
+    group_chat_id: process.env.GROUP_CHAT_ID,
+    note: 'Set TELEGRAM_BOT_TOKEN and GROUP_CHAT_ID in .env. Get bot token from @BotFather on Telegram.'
   });
 });
 
@@ -89,9 +106,11 @@ async function boot() {
   }
 
   startScheduler();
+  pollUpdates();
+
   app.listen(PORT, () => {
     console.log(`🚀 Cooking bot on port ${PORT}`);
-    console.log(`📍 Webhook: POST /webhook`);
+    console.log(`📲 Polling for messages (local mode)`);
     console.log(`🏥 Health: GET /health`);
   });
 }

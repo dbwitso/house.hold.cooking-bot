@@ -1,6 +1,6 @@
 # 🍳 Household Cooking Bot
 
-WhatsApp bot that fairly schedules and tracks cooking duties across two households.
+Telegram bot that fairly schedules and tracks cooking duties across two households.
 
 **Members:**
 - House 1: Dabwitso, Emmanuel, Muchafara, Nathan
@@ -14,7 +14,7 @@ WhatsApp bot that fairly schedules and tracks cooking duties across two househol
 - The cook is also responsible for the dishes that night
 - Daily at **10:00** the bot announces who cooks tonight
 - At **20:00** it sends a reminder if nothing has been confirmed
-- Members confirm via WhatsApp commands
+- Members confirm via Telegram commands in the group chat
 - Anyone can raise a dispute; majority vote resolves it
 
 ---
@@ -32,10 +32,8 @@ cp .env.example .env
 ```
 
 Edit `.env` with your values:
-- `WHATSAPP_TOKEN` — your Meta API access token
-- `WHATSAPP_PHONE_NUMBER_ID` — from the Meta developer dashboard
-- `VERIFY_TOKEN` — any string you choose (used to verify your webhook with Meta)
-- `GROUP_CHAT_ID` — the WhatsApp group ID (you'll see this in incoming webhook payloads once connected)
+- `TELEGRAM_BOT_TOKEN` — your Telegram bot token from BotFather
+- `GROUP_CHAT_ID` — the Telegram group chat ID (a negative number, e.g., -1001234567890)
 
 ### 3. Run
 ```bash
@@ -50,18 +48,17 @@ For local development, use [ngrok](https://ngrok.com):
 ngrok http 3000
 ```
 
-Use the ngrok HTTPS URL as your webhook URL in the Meta dashboard:
-```
-https://your-ngrok-url.ngrok.io/webhook
-```
+### 5. Set up Telegram Bot
 
-### 5. Set up Meta WhatsApp Cloud API
-
-1. Go to [developers.facebook.com](https://developers.facebook.com)
-2. Create an app → WhatsApp → Cloud API
-3. Add your webhook URL and verify token
-4. Subscribe to the `messages` webhook field
-5. Note your Phone Number ID and generate a permanent access token
+1. Message [@BotFather](https://t.me/botfather) on Telegram
+2. Create a new bot with `/newbot`
+3. Copy the HTTP API token
+4. Set your webhook with:
+   ```
+   curl -X POST https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook?url=https://your-ngrok-url.ngrok.io/webhook
+   ```
+5. Create a Telegram group and invite your bot
+6. Get the group chat ID by sending a message and checking `GET /config` endpoint
 
 ### 6. Deploy to Railway
 
@@ -81,7 +78,7 @@ Set your environment variables in the Railway dashboard under your project setti
 
 ## Member Registration
 
-Each person needs to link their phone number once. Send this in the WhatsApp group or as a DM:
+Each person needs to link their Telegram ID once. Send this in the Telegram group:
 
 ```
 register @Dabwitso
@@ -91,6 +88,8 @@ register @Nathan
 register @Bosco
 register @Chibili
 ```
+
+Members who haven't registered will see a prompt with available names.
 
 ---
 
@@ -168,7 +167,7 @@ cooking-bot/
 │   ├── scheduler/
 │   │   └── crons.js             # Morning/evening cron jobs
 │   └── utils/
-│       ├── whatsapp.js          # Meta API sender
+│       ├── telegram.js          # Telegram Bot API sender
 │       └── templates.js         # All message templates
 ├── data/
 │   └── cooking.db               # SQLite database (auto-created)

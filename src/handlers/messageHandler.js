@@ -1,9 +1,11 @@
 const rotation = require('./rotation');
 const disputes = require('./disputes');
-const { sendMessage: waSend, sendToMember } = require('../utils/whatsapp');
+const { sendMessage: tgSend, sendToMember } = require('../utils/telegram');
 const templates = require('../utils/templates');
 
-async function send(to, text) { await waSend(to, text); }
+let currentChatId = null;
+
+async function send(to, text) { await tgSend(currentChatId || to, text); }
 
 async function broadcast(text) {
   const members = await rotation.getAllMembers();
@@ -12,22 +14,23 @@ async function broadcast(text) {
   }
 }
 
-async function handleMessage(from, text) {
+async function handleMessage(from, text, chatId) {
+  currentChatId = chatId;
   const raw = text.trim().toLowerCase();
 
-  // Register (works before phone is linked)
+  // Register (works before Telegram ID is linked)
   const regMatch = raw.match(/^register\s+@?(\w+)$/);
   if (regMatch) {
     const target = await rotation.getMemberByName(regMatch[1]);
     if (!target) { await send(from, `❌ "${regMatch[1]}" not in the list. Names: Dabwitso, Emmanuel, Muchafara, Nathan, Bosco, Chibili.`); return; }
-    rotation.setMemberPhone(target.name, from);
+    rotation.setMemberTelegramId(target.name, from);
     await send(from, templates.registered(target.name));
     return;
   }
 
-  const member = await rotation.getMemberByPhone(from);
+  const member = await rotation.getMemberByTelegramId(from);
   if (!member) {
-    await send(from, `👋 Reply *register @YourName* to link your number.\nNames: Dabwitso, Emmanuel, Muchafara, Nathan, Bosco, Chibili.`);
+    await send(from, `👋 Reply *register @YourName* to link your Telegram ID.\nNames: Dabwitso, Emmanuel, Muchafara, Nathan, Bosco, Chibili.`);
     return;
   }
 

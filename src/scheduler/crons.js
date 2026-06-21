@@ -1,7 +1,7 @@
 const cron = require('node-cron');
 const { assignToday, getTodayRotation, getAllMembers } = require('../handlers/rotation');
 const { expireDisputes } = require('../handlers/disputes');
-const { sendToMember } = require('../utils/whatsapp');
+const { sendToMember } = require('../utils/telegram');
 const templates = require('../utils/templates');
 const db = require('../db/database');
 
@@ -45,9 +45,9 @@ function startScheduler() {
   cron.schedule('0 * * * *', async () => {
     try {
       await db.getDb();
-      const expired = db.all("SELECT sr.*, m.name as requester_name FROM sub_requests sr JOIN members m ON sr.requester_id=m.id WHERE sr.status='open' AND sr.expires_at<=datetime('now')");
+      const expired = await db.all("SELECT sr.*, m.name as requester_name FROM sub_requests sr JOIN members m ON sr.requester_id=m.id WHERE sr.status='open' AND sr.expires_at<=now()::text");
       for (const req of expired) {
-        db.run("UPDATE sub_requests SET status='expired' WHERE id=?", [req.id]);
+        await db.run("UPDATE sub_requests SET status='expired' WHERE id=$1", [req.id]);
         await broadcast(templates.subExpired(req.requester_name));
       }
       await expireDisputes();
