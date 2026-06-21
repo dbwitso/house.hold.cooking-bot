@@ -164,6 +164,38 @@ app.post('/trigger/morning', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Force seed database (emergency recovery)
+app.post('/admin/seed', async (req, res) => {
+  try {
+    console.log('[ADMIN] Force seeding members...');
+    const members = [
+      { name: 'Dabwitso', house: 1, pos: 1 },
+      { name: 'Emmanuel', house: 1, pos: 2 },
+      { name: 'Muchafara', house: 1, pos: 3 },
+      { name: 'Nathan', house: 1, pos: 4 },
+      { name: 'Bosco', house: 2, pos: 5 },
+      { name: 'Chibili', house: 2, pos: 6 },
+    ];
+
+    // Clear existing members
+    await db.run('DELETE FROM members WHERE id > 0');
+    console.log('[ADMIN] Cleared existing members');
+
+    // Insert new members
+    for (const m of members) {
+      await db.run('INSERT INTO members (name, house, queue_position) VALUES ($1, $2, $3)', [m.name, m.house, m.pos]);
+    }
+
+    const verify = await db.all('SELECT id, name, telegram_id FROM members ORDER BY queue_position');
+    console.log('[ADMIN] Seed complete. Members:', verify);
+
+    res.json({ success: true, members_seeded: verify });
+  } catch (err) {
+    console.error('[ADMIN] Seed error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Boot
 async function boot() {
   await db.getDb();
