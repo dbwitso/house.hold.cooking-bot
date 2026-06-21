@@ -18,27 +18,59 @@ let lastUpdateId = 0;
 // Polling for messages
 async function pollUpdates() {
   try {
+    console.log(`[POLLING] Fetching updates since update_id ${lastUpdateId}`);
     const response = await axios.get(`https://api.telegram.org/bot${BOT_TOKEN}/getUpdates`, {
       params: { offset: lastUpdateId + 1, timeout: 30 }
     });
 
-    if (!response.data.ok) return;
+    if (!response.data.ok) {
+      console.error(`[POLLING] Telegram API error:`, response.data.description);
+      setTimeout(pollUpdates, 1000);
+      return;
+    }
+
+    if (response.data.result.length === 0) {
+      console.log(`[POLLING] No new messages`);
+      setTimeout(pollUpdates, 1000);
+      return;
+    }
+
+    console.log(`[POLLING] 📬 Got ${response.data.result.length} update(s)`);
 
     for (const update of response.data.result) {
       lastUpdateId = update.update_id;
       const message = update.message;
 
-      if (!message || !message.text) continue;
+      if (!message) {
+        console.log(`[POLLING] Skipping non-message update`);
+        continue;
+      }
+
+      if (!message.text) {
+        console.log(`[POLLING] Skipping non-text message`);
+        continue;
+      }
 
       const userId = message.from.id;
       const chatId = message.chat.id;
       const text = message.text;
       const name = message.from.first_name || 'User';
-      console.log(`📨 ${name} (${userId}): ${text}`);
-      await handleMessage(userId, text, chatId);
+
+      console.log(`[POLLING] 📨 Message from ${name} (${userId}) in chat ${chatId}: "${text}"`);
+
+      try {
+        await handleMessage(userId, text, chatId);
+      } catch (handlerErr) {
+        console.error(`[POLLING] Handler error for user ${userId}:`, handlerErr.message);
+      }
     }
   } catch (err) {
-    console.error('Polling error:', err.message);
+    console.error(`[POLLING] ❌ Error:`, err.message);
+    if (err.code === 'ECONNRESET') {
+      console.log(`[POLLING] Connection reset, retrying in 5 seconds...`);
+      setTimeout(pollUpdates, 5000);
+      return;
+    }
   }
 
   setTimeout(pollUpdates, 1000);
@@ -63,11 +95,50 @@ app.post('/webhook', async (req, res) => {
 // Diagnostics
 app.get('/config', (req, res) => {
   res.json({
-    has_token: !!process.env.TELEGRAM_BOT_TOKEN,
-    token_length: process.env.TELEGRAM_BOT_TOKEN?.length || 0,
+    status: 'ok',
+    environment: process.env.NODE_ENV || 'development',
+    has_bot_token: !!process.env.TELEGRAM_BOT_TOKEN,
+    bot_token_length: process.env.TELEGRAM_BOT_TOKEN?.length || 0,
     group_chat_id: process.env.GROUP_CHAT_ID,
+    database_url_set: !!process.env.DATABASE_URL,
+    port: PORT,
     note: 'Set TELEGRAM_BOT_TOKEN and GROUP_CHAT_ID in .env. Get bot token from @BotFather on Telegram.'
   });
+});
+
+// Monitoring endpoint
+app.get('/monitor', async (req, res) => {
+  try {
+    await db.getDb();
+    const members = await db.all('SELECT id, name, telegram_id, house, queue_position, owed_turns FROM members WHERE active=1 ORDER BY queue_position');
+    const today = new Date().toISOString().split('T')[0];
+    const todayRotation = await db.get('SELECT r.*, m.name as cook_name FROM rotation r JOIN members m ON r.member_id=m.id WHERE r.scheduled_date=$1', [today]);
+
+    res.json({
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      members: {
+        total: members.length,
+        list: members.map(m => ({
+          name: m.name,
+          house: m.house,
+          telegram_id: m.telegram_id || 'NOT_REGISTERED',
+          queue_position: m.queue_position,
+          owed_turns: m.owed_turns
+        }))
+      },
+      today: {
+        date: today,
+        assignment: todayRotation ? {
+          cook: todayRotation.cook_name,
+          status: todayRotation.status
+        } : 'NOT_ASSIGNED'
+      }
+    });
+  } catch (err) {
+    console.error('[MONITOR] Error:', err.message);
+    res.status(500).json({ status: 'error', message: err.message });
+  }
 });
 
 // Health check

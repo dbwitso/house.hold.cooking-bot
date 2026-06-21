@@ -5,7 +5,9 @@ const templates = require('../utils/templates');
 
 let currentChatId = null;
 
-async function send(to, text) { await tgSend(currentChatId || to, text); }
+async function send(to, text) {
+  await tgSend(currentChatId || to, text);
+}
 
 async function broadcast(text) {
   const members = await rotation.getAllMembers();
@@ -18,63 +20,115 @@ async function handleMessage(from, text, chatId) {
   currentChatId = chatId;
   const raw = text.trim().toLowerCase();
 
+  console.log(`[HANDLER] from=${from}, chatId=${chatId}, text="${text}"`);
+
   // Register (works before Telegram ID is linked)
   const regMatch = raw.match(/^register\s+@?(\w+)$/);
   if (regMatch) {
-    const target = await rotation.getMemberByName(regMatch[1]);
-    if (!target) { await send(from, `❌ "${regMatch[1]}" not in the list. Names: Dabwitso, Emmanuel, Muchafara, Nathan, Bosco, Chibili.`); return; }
-    rotation.setMemberTelegramId(target.name, from);
-    await send(from, templates.registered(target.name));
-    return;
+    const nameToRegister = regMatch[1];
+    console.log(`[REGISTER] Attempting to register ${nameToRegister} with ID ${from}`);
+
+    try {
+      const target = await rotation.getMemberByName(nameToRegister);
+      if (!target) {
+        console.log(`[REGISTER] Name "${nameToRegister}" not found in database`);
+        await send(from, `❌ "${nameToRegister}" not in the list. Names: Dabwitso, Emmanuel, Muchafara, Nathan, Bosco, Chibili.`);
+        return;
+      }
+
+      console.log(`[REGISTER] Found member: ${target.name} (ID: ${target.id}). Setting telegram_id to ${from}`);
+      await rotation.setMemberTelegramId(target.name, from);
+      console.log(`[REGISTER] ✅ Successfully registered ${target.name} with telegram_id ${from}`);
+
+      await send(from, templates.registered(target.name));
+      return;
+    } catch (err) {
+      console.error(`[REGISTER] ERROR:`, err.message);
+      await send(from, `❌ Registration failed: ${err.message}`);
+      return;
+    }
   }
 
   const member = await rotation.getMemberByTelegramId(from);
   if (!member) {
+    console.log(`[HANDLER] User ${from} not registered, sending registration prompt`);
     await send(from, `👋 Reply *register @YourName* to link your Telegram ID.\nNames: Dabwitso, Emmanuel, Muchafara, Nathan, Bosco, Chibili.`);
     return;
   }
 
-  if (raw === 'help') { await send(from, templates.help()); return; }
+  console.log(`[HANDLER] User registered as: ${member.name}`);
+
+  if (raw === 'help') {
+    console.log(`[HELP] Sending help to ${member.name}`);
+    await send(from, templates.help());
+    return;
+  }
 
   if (raw === 'schedule') {
+    console.log(`[SCHEDULE] Fetching schedule for ${member.name}`);
     const days = await rotation.getUpcomingSchedule(7);
     await send(from, templates.schedule(days));
     return;
   }
 
   if (raw === 'done cooking') {
+    console.log(`[DONE_COOKING] ${member.name} confirming cooking done`);
     const r = await rotation.confirmCookingDone(member.id);
-    if (r.error) { await send(from, `❌ ${r.error}`); return; }
+    if (r.error) {
+      console.log(`[DONE_COOKING] Error: ${r.error}`);
+      await send(from, `❌ ${r.error}`);
+      return;
+    }
     const rot = await rotation.getTodayRotation();
     await broadcast(templates.cookingConfirmed(rot.covered_by_name || rot.cook_name));
     return;
   }
 
   if (raw === 'done dishes') {
+    console.log(`[DONE_DISHES] ${member.name} confirming dishes done`);
     const r = await rotation.confirmDishesDone(member.id);
-    if (r.error) { await send(from, `❌ ${r.error}`); return; }
+    if (r.error) {
+      console.log(`[DONE_DISHES] Error: ${r.error}`);
+      await send(from, `❌ ${r.error}`);
+      return;
+    }
     const rot = await rotation.getTodayRotation();
     await broadcast(templates.dishesConfirmed(rot.covered_by_name || rot.cook_name));
     return;
   }
 
   if (raw === 'skip') {
+    console.log(`[SKIP] ${member.name} skipping today`);
     const r = await rotation.skipToday(member.id);
-    if (r.error) { await send(from, `❌ ${r.error}`); return; }
+    if (r.error) {
+      console.log(`[SKIP] Error: ${r.error}`);
+      await send(from, `❌ ${r.error}`);
+      return;
+    }
     await broadcast(`⏭️ *${member.name}* skipped tonight and moves to front of tomorrow's queue.`);
     return;
   }
 
   if (raw === 'sub needed') {
+    console.log(`[SUB_REQUEST] ${member.name} needs a sub`);
     const r = await rotation.requestSub(member.id);
-    if (r.error) { await send(from, `❌ ${r.error}`); return; }
+    if (r.error) {
+      console.log(`[SUB_REQUEST] Error: ${r.error}`);
+      await send(from, `❌ ${r.error}`);
+      return;
+    }
     await broadcast(templates.subRequest(member.name));
     return;
   }
 
   if (raw === 'cover') {
+    console.log(`[COVER] ${member.name} volunteering to cover`);
     const r = await rotation.coverSub(member.id);
-    if (r.error) { await send(from, `❌ ${r.error}`); return; }
+    if (r.error) {
+      console.log(`[COVER] Error: ${r.error}`);
+      await send(from, `❌ ${r.error}`);
+      return;
+    }
     const rot = await rotation.getTodayRotation();
     await broadcast(templates.subFilled(member.name, rot.cook_name));
     return;
@@ -82,41 +136,70 @@ async function handleMessage(from, text, chatId) {
 
   const swapReqMatch = raw.match(/^swap\s+@?(\w+)$/);
   if (swapReqMatch && !['yes','no'].includes(swapReqMatch[1])) {
+    console.log(`[SWAP_REQUEST] ${member.name} requesting swap with ${swapReqMatch[1]}`);
     const r = await rotation.requestSwap(member.id, swapReqMatch[1]);
-    if (r.error) { await send(from, `❌ ${r.error}`); return; }
+    if (r.error) {
+      console.log(`[SWAP_REQUEST] Error: ${r.error}`);
+      await send(from, `❌ ${r.error}`);
+      return;
+    }
     const rot = await rotation.getTodayRotation();
     await broadcast(templates.swapRequest(member.name, r.targetName, rot?.scheduled_date));
     return;
   }
 
   if (raw === 'swap yes') {
+    console.log(`[SWAP_ACCEPT] ${member.name} accepting swap`);
     const r = await rotation.acceptSwap(member.id);
-    if (r.error) { await send(from, `❌ ${r.error}`); return; }
+    if (r.error) {
+      console.log(`[SWAP_ACCEPT] Error: ${r.error}`);
+      await send(from, `❌ ${r.error}`);
+      return;
+    }
     await broadcast(templates.swapAccepted(member.name, ''));
     return;
   }
 
   if (raw === 'swap no') {
+    console.log(`[SWAP_DECLINE] ${member.name} declining swap`);
     const r = await rotation.declineSwap(member.id);
-    if (r.error) { await send(from, `❌ ${r.error}`); return; }
+    if (r.error) {
+      console.log(`[SWAP_DECLINE] Error: ${r.error}`);
+      await send(from, `❌ ${r.error}`);
+      return;
+    }
     await broadcast(`❌ *Swap declined* by ${member.name}.`);
     return;
   }
 
   if (raw === 'dispute cooking' || raw === 'dispute dishes') {
     const stage = raw.split(' ')[1];
+    console.log(`[DISPUTE] ${member.name} raising dispute on ${stage}`);
     const r = await disputes.raiseDispute(member.id, stage);
-    if (r.error) { await send(from, `❌ ${r.error}`); return; }
+    if (r.error) {
+      console.log(`[DISPUTE] Error: ${r.error}`);
+      await send(from, `❌ ${r.error}`);
+      return;
+    }
     const rot = await rotation.getTodayRotation();
     await broadcast(templates.disputeRaised(member.name, stage, rot.covered_by_name || rot.cook_name));
     return;
   }
 
   if (raw === 'yes' || raw === 'no') {
+    console.log(`[VOTE] ${member.name} voting ${raw}`);
     const openDispute = await disputes.getOpenDispute();
-    if (!openDispute) { await send(from, 'No open dispute right now.'); return; }
+    if (!openDispute) {
+      console.log(`[VOTE] No open dispute`);
+      await send(from, 'No open dispute right now.');
+      return;
+    }
     const r = await disputes.castVote(member.id, raw === 'yes');
-    if (r.error) { await send(from, `❌ ${r.error}`); return; }
+    if (r.error) {
+      console.log(`[VOTE] Error: ${r.error}`);
+      await send(from, `❌ ${r.error}`);
+      return;
+    }
     if (r.resolved) {
       const rot = await rotation.getTodayRotation();
       await broadcast(templates.disputeResult(r.outcome, rot.covered_by_name || rot.cook_name, openDispute.stage));
@@ -126,6 +209,7 @@ async function handleMessage(from, text, chatId) {
     return;
   }
 
+  console.log(`[HANDLER] Command not recognized: "${text}"`);
   await send(from, templates.notRecognised());
 }
 

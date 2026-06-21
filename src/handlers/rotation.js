@@ -189,7 +189,10 @@ async function getMemberByName(name) {
 
 async function setMemberTelegramId(name, telegramId) {
   await db.getDb();
-  await db.run('UPDATE members SET telegram_id=$1 WHERE LOWER(name)=LOWER($2)', [telegramId, name]);
+  console.log(`[DB] Updating ${name} with telegram_id=${telegramId}`);
+  const result = await db.run('UPDATE members SET telegram_id=$1 WHERE LOWER(name)=LOWER($2)', [telegramId, name]);
+  console.log(`[DB] Update result:`, result);
+  return result;
 }
 
 async function getAllMembers() {

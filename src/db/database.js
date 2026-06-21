@@ -107,11 +107,16 @@ async function seedMembers(client) {
 async function run(sql, params = []) {
   const client = await pool.connect();
   try {
+    console.log(`[DB.RUN] SQL: ${sql.substring(0, 100)}... params: [${params.join(', ')}]`);
     const result = await client.query(sql, params);
+    console.log(`[DB.RUN] ✅ Success. Rows affected: ${result.rowCount}`);
     if (result.rows.length > 0 && result.rows[0].lastval) {
       lastInsertId = result.rows[0].lastval;
     }
     return result;
+  } catch (err) {
+    console.error(`[DB.RUN] ❌ ERROR:`, err.message);
+    throw err;
   } finally {
     client.release();
   }
@@ -120,8 +125,14 @@ async function run(sql, params = []) {
 async function get(sql, params = []) {
   const client = await pool.connect();
   try {
+    console.log(`[DB.GET] SQL: ${sql.substring(0, 100)}... params: [${params.join(', ')}]`);
     const result = await client.query(sql, params);
-    return result.rows[0] || null;
+    const row = result.rows[0] || null;
+    console.log(`[DB.GET] ✅ Found:`, row ? 'YES' : 'NO');
+    return row;
+  } catch (err) {
+    console.error(`[DB.GET] ❌ ERROR:`, err.message);
+    throw err;
   } finally {
     client.release();
   }
@@ -130,8 +141,13 @@ async function get(sql, params = []) {
 async function all(sql, params = []) {
   const client = await pool.connect();
   try {
+    console.log(`[DB.ALL] SQL: ${sql.substring(0, 100)}... params: [${params.join(', ')}]`);
     const result = await client.query(sql, params);
+    console.log(`[DB.ALL] ✅ Found ${result.rowCount} rows`);
     return result.rows;
+  } catch (err) {
+    console.error(`[DB.ALL] ❌ ERROR:`, err.message);
+    throw err;
   } finally {
     client.release();
   }

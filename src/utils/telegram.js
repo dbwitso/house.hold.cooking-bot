@@ -9,23 +9,27 @@ const BASE_URL = `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}`
 async function sendMessage(chatId, text) {
   try {
     if (!chatId) {
-      console.error('❌ sendMessage: No recipient (chatId) provided');
+      console.error('❌ [TG.SEND] No recipient (chatId) provided');
       return;
     }
     if (!process.env.TELEGRAM_BOT_TOKEN) {
-      console.error('❌ sendMessage: TELEGRAM_BOT_TOKEN not set');
+      console.error('❌ [TG.SEND] TELEGRAM_BOT_TOKEN not set');
       return;
     }
 
+    console.log(`[TG.SEND] Sending to chatId=${chatId}, length=${text.length}`);
     const response = await axios.post(`${BASE_URL}/sendMessage`, {
       chat_id: chatId,
       text: text,
       parse_mode: 'Markdown',
     });
-    console.log(`✅ Message sent to ${chatId}`);
+    console.log(`✅ [TG.SEND] Message sent to ${chatId}, message_id=${response.data.result.message_id}`);
   } catch (err) {
     const errData = err.response?.data;
-    console.error(`❌ Message to ${chatId} failed:`, errData?.description || err.message);
+    console.error(`❌ [TG.SEND] Message to ${chatId} failed:`, errData?.description || err.message);
+    if (errData?.error_code === 403) {
+      console.error(`   → Bot cannot send to this chat. Check permissions or group settings.`);
+    }
   }
 }
 
