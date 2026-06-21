@@ -18,19 +18,25 @@ let lastUpdateId = 0;
 // Polling for messages
 async function pollUpdates() {
   try {
-    console.log(`[POLLING] Fetching updates since update_id ${lastUpdateId}`);
+    const offset = lastUpdateId + 1;
+    console.log(`[POLLING] Fetching updates since update_id ${offset}`);
+
     const response = await axios.get(`https://api.telegram.org/bot${BOT_TOKEN}/getUpdates`, {
-      params: { offset: lastUpdateId + 1, timeout: 30 }
+      params: {
+        offset: offset,
+        timeout: 30,
+        limit: 100
+      }
     });
 
     if (!response.data.ok) {
-      console.error(`[POLLING] Telegram API error:`, response.data.description);
-      setTimeout(pollUpdates, 1000);
+      console.error(`[POLLING] Telegram API error (${response.status}):`, response.data.description);
+      setTimeout(pollUpdates, 2000);
       return;
     }
 
     if (response.data.result.length === 0) {
-      console.log(`[POLLING] No new messages`);
+      console.log(`[POLLING] ✓ No new messages`);
       setTimeout(pollUpdates, 1000);
       return;
     }
@@ -38,36 +44,43 @@ async function pollUpdates() {
     console.log(`[POLLING] 📬 Got ${response.data.result.length} update(s)`);
 
     for (const update of response.data.result) {
-      lastUpdateId = update.update_id;
-      const message = update.message;
-
-      if (!message) {
-        console.log(`[POLLING] Skipping non-message update`);
-        continue;
-      }
-
-      if (!message.text) {
-        console.log(`[POLLING] Skipping non-text message`);
-        continue;
-      }
-
-      const userId = message.from.id;
-      const chatId = message.chat.id;
-      const text = message.text;
-      const name = message.from.first_name || 'User';
-
-      console.log(`[POLLING] 📨 Message from ${name} (${userId}) in chat ${chatId}: "${text}"`);
-
       try {
+        lastUpdateId = update.update_id;
+        const message = update.message;
+
+        if (!message) {
+          console.log(`[POLLING] Skipping non-message update (type: ${update.edited_message ? 'edited' : 'other'})`);
+          continue;
+        }
+
+        if (!message.text) {
+          console.log(`[POLLING] Skipping non-text message (type: ${message.photo ? 'photo' : message.sticker ? 'sticker' : 'other'})`);
+          continue;
+        }
+
+        const userId = message.from.id;
+        const chatId = message.chat.id;
+        const text = message.text;
+        const name = message.from.first_name || 'User';
+
+        console.log(`[POLLING] 📨 Message from ${name} (${userId}) in chat ${chatId}: "${text}"`);
+
         await handleMessage(userId, text, chatId);
-      } catch (handlerErr) {
-        console.error(`[POLLING] Handler error for user ${userId}:`, handlerErr.message);
+      } catch (updateErr) {
+        console.error(`[POLLING] Error processing update ${update.update_id}:`, updateErr.message);
       }
     }
   } catch (err) {
-    console.error(`[POLLING] ❌ Error:`, err.message);
-    if (err.code === 'ECONNRESET') {
-      console.log(`[POLLING] Connection reset, retrying in 5 seconds...`);
+    if (err.response?.status === 409) {
+      console.error(`[POLLING] ⚠️  409 Conflict - resetting offset to latest`);
+      lastUpdateId = 0;
+      setTimeout(pollUpdates, 3000);
+      return;
+    }
+
+    console.error(`[POLLING] ❌ Error (${err.response?.status || err.code}):`, err.message);
+    if (err.code === 'ECONNRESET' || err.code === 'ETIMEDOUT') {
+      console.log(`[POLLING] Connection issue, retrying in 5 seconds...`);
       setTimeout(pollUpdates, 5000);
       return;
     }

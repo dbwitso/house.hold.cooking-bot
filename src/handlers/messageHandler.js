@@ -93,6 +93,18 @@ async function handleMessage(from, text, chatId) {
     return;
   }
 
+  if (raw === 'today' || raw === 'today cook' || raw === "who's cooking") {
+    console.log(`[TODAY] ${member.name} checking today's cook`);
+    const today = await rotation.getTodayRotation();
+    if (today) {
+      const cook = today.covered_by_name || today.cook_name;
+      await send(from, `🍳 *Today's Cook:* ${cook}\nStatus: ${today.status}`);
+    } else {
+      await send(from, `📅 No cook assigned yet for today.`);
+    }
+    return;
+  }
+
   if (raw === 'schedule') {
     console.log(`[SCHEDULE] Fetching schedule for ${member.name}`);
     const days = await rotation.getUpcomingSchedule(7);
