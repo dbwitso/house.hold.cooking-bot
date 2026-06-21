@@ -100,18 +100,30 @@ async function handleMessage(from, text, chatId) {
       return;
     }
 
-    // Skip member for N cycles
-    const skipMatch = raw.match(/^admin skip @?(\w+) (\d+) cycles?$/);
-    if (skipMatch) {
-      console.log(`[ADMIN] Skipping ${skipMatch[1]} for ${skipMatch[2]} cycles`);
-      const member = await rotation.getMemberByName(skipMatch[1]);
-      if (!member) { await send(from, `❌ "${skipMatch[1]}" not found`); return; }
+    // Reorder queue
+    const queueMatch = raw.match(/^admin queue (.+)$/);
+    if (queueMatch) {
+      const names = queueMatch[1].split(/\s+/).map(n => n.replace('@', ''));
+      console.log(`[ADMIN] Reordering queue: ${names.join(' → ')}`);
 
-      await db.run(
-        'INSERT INTO skip_cycles (member_id, cycles_remaining, reason) VALUES ($1, $2, $3)',
-        [member.id, parseInt(skipMatch[2]), 'Admin skip']
-      );
-      await broadcast(`⏭️ *${member.name}* skipped for ${skipMatch[2]} cooking cycles`);
+      const members = [];
+      for (const name of names) {
+        const member = await rotation.getMemberByName(name);
+        if (!member) {
+          await send(from, `❌ "${name}" not found`);
+          return;
+        }
+        members.push(member);
+      }
+
+      // Update queue positions
+      for (let i = 0; i < members.length; i++) {
+        await db.run('UPDATE members SET queue_position=$1 WHERE id=$2', [i + 1, members[i].id]);
+      }
+
+      const order = members.map(m => m.name).join(' → ');
+      await broadcast(`📋 *Queue reordered:*\n${order}`);
+      console.log(`[ADMIN] ✅ Queue set to: ${order}`);
       return;
     }
   }

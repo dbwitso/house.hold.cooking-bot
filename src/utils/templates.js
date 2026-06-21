@@ -83,7 +83,7 @@ const templates = {
     `👤 *ADMIN (Dabwitso):*\n` +
     `*admin reassign @name1 @name2* — change today's cook\n` +
     `*admin assign @name1 covers @name2* — coverage with turn swap\n` +
-    `*admin skip @name N cycles* — skip someone for N cycles`,
+    `*admin queue @n1 @n2 @n3...* — set exact cooking order`,
 
   registered: (name) =>
     `✅ You're registered as *${name}*. You'll now receive reminders and updates.`,
