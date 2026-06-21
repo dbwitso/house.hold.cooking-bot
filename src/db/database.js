@@ -43,7 +43,29 @@ async function initSchema() {
         meal_rating INTEGER,
         announced_at TEXT,
         created_at TEXT DEFAULT (now()::text)
-      );
+      );`);
+
+    // Add missing columns if they don't exist
+    console.log('[DB.INIT] Checking for missing columns...');
+    try {
+      await client.query('ALTER TABLE rotation ADD COLUMN meal_rating INTEGER');
+      console.log('[DB.INIT] ✅ Added meal_rating column');
+    } catch (e) {
+      if (!e.message.includes('already exists')) {
+        console.log('[DB.INIT] ℹ️  meal_rating column already exists');
+      }
+    }
+
+    try {
+      await client.query('ALTER TABLE rotation ADD COLUMN announced_at TEXT');
+      console.log('[DB.INIT] ✅ Added announced_at column');
+    } catch (e) {
+      if (!e.message.includes('already exists')) {
+        console.log('[DB.INIT] ℹ️  announced_at column already exists');
+      }
+    }
+
+    await client.query(`
       CREATE TABLE IF NOT EXISTS disputes (
         id SERIAL PRIMARY KEY,
         rotation_id INTEGER NOT NULL REFERENCES rotation(id),
