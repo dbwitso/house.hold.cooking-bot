@@ -65,18 +65,25 @@ const templates = {
 
   help: () =>
     `🤖 *Cooking Bot — Commands*\n\n` +
+    `*today* — who's cooking tonight?\n` +
     `*done cooking* — confirm you cooked tonight\n` +
     `*done dishes* — confirm dishes are done\n` +
+    `*rating 1-5* — rate the meal\n` +
     `*sub needed* — ask for someone to cover you\n` +
     `*cover* — volunteer to cover tonight's cook\n` +
+    `*delegate @name* — ask someone else to cook for you\n` +
     `*swap @name* — request a turn swap\n` +
     `*swap yes / swap no* — accept/decline a swap\n` +
     `*dispute cooking* — dispute a cooking confirmation\n` +
     `*dispute dishes* — dispute a dishes confirmation\n` +
     `*yes / no* — vote on an open dispute\n` +
     `*schedule* — see the next 7 days\n` +
-    `*skip* — mark yourself as skipping (moves you to front of next rotation)\n` +
-    `*register @name* — link your number to your name (e.g. register @Dabwitso)`,
+    `*skip* — mark yourself as skipping (moves to front of queue)\n` +
+    `*register @name* — link your Telegram ID\n\n` +
+    `👤 *ADMIN (Dabwitso):*\n` +
+    `*admin reassign @name1 @name2* — change today's cook\n` +
+    `*admin assign @name1 covers @name2* — coverage with turn swap\n` +
+    `*admin skip @name N cycles* — skip someone for N cycles`,
 
   registered: (name) =>
     `✅ You're registered as *${name}*. You'll now receive reminders and updates.`,

@@ -99,6 +99,13 @@ async function initSchema() {
         expires_at TEXT NOT NULL,
         created_at TEXT DEFAULT (now()::text)
       );
+      CREATE TABLE IF NOT EXISTS skip_cycles (
+        id SERIAL PRIMARY KEY,
+        member_id INTEGER NOT NULL REFERENCES members(id),
+        cycles_remaining INTEGER DEFAULT 2,
+        reason TEXT,
+        created_at TEXT DEFAULT (now()::text)
+      );
     `);
     console.log('[DB.INIT] ✅ Tables created/verified');
 

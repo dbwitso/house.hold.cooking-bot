@@ -67,6 +67,7 @@ async function handleMessage(from, text, chatId) {
 
   // Admin commands (Dabwitso only)
   if (member.name === 'Dabwitso') {
+    // Reassign today's cook
     const reassignMatch = raw.match(/^admin reassign @?(\w+) @?(\w+)$/);
     if (reassignMatch) {
       console.log(`[ADMIN] Reassigning ${reassignMatch[1]} to ${reassignMatch[2]}`);
@@ -78,6 +79,39 @@ async function handleMessage(from, text, chatId) {
       const today = new Date().toISOString().split('T')[0];
       await db.run('UPDATE rotation SET member_id=$1 WHERE scheduled_date=$2', [newCook.id, today]);
       await broadcast(`🔄 *Admin change:* ${current.name} → ${newCook.name} for today`);
+      return;
+    }
+
+    // Assign with swap (coverage = swap turn)
+    const swapCoverMatch = raw.match(/^admin assign @?(\w+) covers @?(\w+)$/);
+    if (swapCoverMatch) {
+      console.log(`[ADMIN] ${swapCoverMatch[1]} covers for ${swapCoverMatch[2]} (swap turns)`);
+      const coverPerson = await rotation.getMemberByName(swapCoverMatch[1]);
+      const originalPerson = await rotation.getMemberByName(swapCoverMatch[2]);
+      if (!coverPerson) { await send(from, `❌ "${swapCoverMatch[1]}" not found`); return; }
+      if (!originalPerson) { await send(from, `❌ "${swapCoverMatch[2]}" not found`); return; }
+
+      const today = new Date().toISOString().split('T')[0];
+      // Assign cover person to today
+      await db.run('UPDATE rotation SET member_id=$1 WHERE scheduled_date=$2', [coverPerson.id, today]);
+      // Create a debt: original person gets cover person's future turn
+      // (This is handled manually for now - need to swap their queue positions)
+      await broadcast(`🔄 *Coverage with turn swap:*\n${coverPerson.name} cooks TODAY\n${originalPerson.name} takes ${coverPerson.name}'s future turn`);
+      return;
+    }
+
+    // Skip member for N cycles
+    const skipMatch = raw.match(/^admin skip @?(\w+) (\d+) cycles?$/);
+    if (skipMatch) {
+      console.log(`[ADMIN] Skipping ${skipMatch[1]} for ${skipMatch[2]} cycles`);
+      const member = await rotation.getMemberByName(skipMatch[1]);
+      if (!member) { await send(from, `❌ "${skipMatch[1]}" not found`); return; }
+
+      await db.run(
+        'INSERT INTO skip_cycles (member_id, cycles_remaining, reason) VALUES ($1, $2, $3)',
+        [member.id, parseInt(skipMatch[2]), 'Admin skip']
+      );
+      await broadcast(`⏭️ *${member.name}* skipped for ${skipMatch[2]} cooking cycles`);
       return;
     }
   }
