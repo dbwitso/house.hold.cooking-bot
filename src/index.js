@@ -196,6 +196,75 @@ app.post('/admin/seed', async (req, res) => {
   }
 });
 
+// Statistics dashboard
+app.get('/stats', async (req, res) => {
+  try {
+    await db.getDb();
+
+    // Get all members with stats
+    const members = await db.all(`
+      SELECT
+        m.id, m.name, m.house, m.queue_position, m.owed_turns,
+        COUNT(r.id) as total_cooks,
+        SUM(CASE WHEN r.status = 'dishes_done' THEN 1 ELSE 0 END) as completed_cooks,
+        AVG(CASE WHEN r.meal_rating > 0 THEN r.meal_rating ELSE NULL END) as avg_rating
+      FROM members m
+      LEFT JOIN rotation r ON m.id = r.member_id
+      WHERE m.active = 1
+      GROUP BY m.id, m.name, m.house, m.queue_position, m.owed_turns
+      ORDER BY m.queue_position
+    `);
+
+    // Get this month's stats
+    const thisMonth = new Date().toISOString().split('-').slice(0, 2).join('-');
+    const monthlyStats = await db.all(`
+      SELECT m.name, COUNT(r.id) as cooks_this_month
+      FROM members m
+      LEFT JOIN rotation r ON m.id = r.member_id AND r.scheduled_date LIKE $1
+      WHERE m.active = 1
+      GROUP BY m.name
+      ORDER BY cooks_this_month DESC
+    `, [`${thisMonth}%`]);
+
+    // Upcoming week
+    const today = new Date().toISOString().split('T')[0];
+    const nextWeek = new Date();
+    nextWeek.setDate(nextWeek.getDate() + 7);
+    const nextWeekStr = nextWeek.toISOString().split('T')[0];
+
+    const upcomingCooks = await db.all(`
+      SELECT r.scheduled_date, m.name, r.status, r.meal_rating
+      FROM rotation r
+      JOIN members m ON r.member_id = m.id
+      WHERE r.scheduled_date BETWEEN $1 AND $2
+      ORDER BY r.scheduled_date
+    `, [today, nextWeekStr]);
+
+    res.json({
+      timestamp: new Date().toISOString(),
+      members_stats: members.map(m => ({
+        name: m.name,
+        house: m.house,
+        queue_position: m.queue_position,
+        total_cooks: parseInt(m.total_cooks) || 0,
+        completed_cooks: parseInt(m.completed_cooks) || 0,
+        avg_meal_rating: m.avg_rating ? parseFloat(m.avg_rating).toFixed(1) : 'N/A',
+        owed_turns: m.owed_turns
+      })),
+      this_month: monthlyStats,
+      upcoming_week: upcomingCooks.map(c => ({
+        date: c.scheduled_date,
+        cook: c.name,
+        status: c.status,
+        rating: c.meal_rating || 'pending'
+      }))
+    });
+  } catch (err) {
+    console.error('[STATS] Error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Boot
 async function boot() {
   await db.getDb();

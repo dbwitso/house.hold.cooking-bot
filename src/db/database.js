@@ -40,6 +40,8 @@ async function initSchema() {
         status TEXT DEFAULT 'pending',
         covered_by INTEGER REFERENCES members(id),
         swapped_with INTEGER REFERENCES members(id),
+        meal_rating INTEGER,
+        announced_at TEXT,
         created_at TEXT DEFAULT (now()::text)
       );
       CREATE TABLE IF NOT EXISTS disputes (

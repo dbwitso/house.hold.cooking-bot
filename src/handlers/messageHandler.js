@@ -2,6 +2,7 @@ const rotation = require('./rotation');
 const disputes = require('./disputes');
 const { sendMessage: tgSend, sendToMember } = require('../utils/telegram');
 const templates = require('../utils/templates');
+const db = require('../db/database');
 
 let currentChatId = null;
 
@@ -61,6 +62,34 @@ async function handleMessage(from, text, chatId) {
   if (raw === 'help') {
     console.log(`[HELP] Sending help to ${member.name}`);
     await send(from, templates.help());
+    return;
+  }
+
+  // Admin commands (Dabwitso only)
+  if (member.name === 'Dabwitso') {
+    const reassignMatch = raw.match(/^admin reassign @?(\w+) @?(\w+)$/);
+    if (reassignMatch) {
+      console.log(`[ADMIN] Reassigning ${reassignMatch[1]} to ${reassignMatch[2]}`);
+      const current = await rotation.getMemberByName(reassignMatch[1]);
+      const newCook = await rotation.getMemberByName(reassignMatch[2]);
+      if (!current) { await send(from, `❌ "${reassignMatch[1]}" not found`); return; }
+      if (!newCook) { await send(from, `❌ "${reassignMatch[2]}" not found`); return; }
+
+      const today = new Date().toISOString().split('T')[0];
+      await db.run('UPDATE rotation SET member_id=$1 WHERE scheduled_date=$2', [newCook.id, today]);
+      await broadcast(`🔄 *Admin change:* ${current.name} → ${newCook.name} for today`);
+      return;
+    }
+  }
+
+  // Rating system (after dishes done)
+  const ratingMatch = raw.match(/^rating\s+([1-5])$/);
+  if (ratingMatch) {
+    console.log(`[RATING] ${member.name} rated meal: ${ratingMatch[1]} stars`);
+    const today = new Date().toISOString().split('T')[0];
+    await db.run('UPDATE rotation SET meal_rating=$1 WHERE scheduled_date=$2', [parseInt(ratingMatch[1]), today]);
+    const stars = '⭐'.repeat(parseInt(ratingMatch[1]));
+    await send(from, `${stars} Thanks for the feedback!`);
     return;
   }
 
