@@ -22,6 +22,7 @@ async function getDb() {
 async function initSchema() {
   const client = await pool.connect();
   try {
+    console.log('[DB.INIT] Creating schema tables...');
     await client.query(`
       CREATE TABLE IF NOT EXISTS members (
         id SERIAL PRIMARY KEY,
@@ -75,11 +76,23 @@ async function initSchema() {
         created_at TEXT DEFAULT (now()::text)
       );
     `);
+    console.log('[DB.INIT] ✅ Tables created/verified');
 
     const count = await client.query('SELECT COUNT(*) as c FROM members');
-    if (count.rows[0].c === 0) {
+    const memberCount = count.rows[0].c;
+    console.log(`[DB.INIT] Members count: ${memberCount}`);
+
+    if (memberCount === 0) {
+      console.log('[DB.INIT] 🌱 Seeding members...');
       await seedMembers(client);
+      const verifyCount = await client.query('SELECT COUNT(*) as c FROM members');
+      console.log(`[DB.INIT] ✅ After seed, members count: ${verifyCount.rows[0].c}`);
+    } else {
+      console.log(`[DB.INIT] ℹ️  Database already has ${memberCount} members, skipping seed`);
     }
+  } catch (err) {
+    console.error('[DB.INIT] ❌ Schema initialization error:', err.message);
+    throw err;
   } finally {
     client.release();
   }
